@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Autonomous Product Recall & Traceability Agent</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#21262d; --border:#30363d;
+  --text:#e6edf3; --muted:#8b949e; --accent:#3b82f6; --green:#22c55e;
+  --red:#ef4444; --yellow:#f59e0b; --purple:#a855f7; --orange:#f97316;
+  --critical:#dc2626; --high:#ea580c; --medium:#ca8a04; --low:#16a34a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",system-ui,sans-serif;font-size:13px;line-height:1.5;min-height:100vh}
+/* ── Layout ── */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.header-left{display:flex;align-items:center;gap:12px}
+.logo{width:32px;height:32px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff}
+.header h1{font-size:15px;font-weight:600;color:var(--text)}
+.header-sub{font-size:11px;color:var(--muted)}
+.recall-badge{background:var(--critical);color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
+.status-bar{display:flex;align-items:center;gap:16px}
+.status-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+.layout{display:grid;grid-template-columns:220px 1fr;min-height:calc(100vh - 57px)}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:16px 0}
+.sidebar-section{padding:8px 16px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-top:8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 16px;cursor:pointer;color:var(--muted);font-size:12px;transition:.15s;border-left:3px solid transparent}
+.nav-item:hover{color:var(--text);background:var(--surface2)}
+.nav-item.active{color:var(--accent);background:rgba(59,130,246,.08);border-left-color:var(--accent)}
+.nav-icon{width:16px;height:16px;opacity:.7}
+
+.main{padding:20px;overflow-x:hidden}
+.page{display:none}
+.page.active{display:block}
+
+/* ── Cards ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;top:0;left:0;right:0;height:3px}
+.kpi.critical::before{background:var(--critical)}
+.kpi.high::before{background:var(--high)}
+.kpi.medium::before{background:var(--medium)}
+.kpi.green::before{background:var(--green)}
+.kpi.blue::before{background:var(--accent)}
+.kpi.purple::before{background:var(--purple)}
+.kpi-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.kpi-value{font-size:22px;font-weight:700;color:var(--text);line-height:1}
+.kpi-sub{font-size:10px;color:var(--muted);margin-top:4px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card-title .badge{font-size:10px;background:var(--surface2);color:var(--muted);padding:1px 6px;border-radius:4px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+
+/* ── Tables ── */
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+td{padding:6px 8px;border-bottom:1px solid rgba(48,54,61,.5);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+
+/* ── Badges ── */
+.badge-status{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600}
+.badge-critical{background:rgba(220,38,38,.15);color:#fca5a5;border:1px solid rgba(220,38,38,.3)}
+.badge-high{background:rgba(234,88,12,.15);color:#fdba74;border:1px solid rgba(234,88,12,.3)}
+.badge-medium{background:rgba(202,138,4,.15);color:#fde68a;border:1px solid rgba(202,138,4,.3)}
+.badge-low{background:rgba(22,163,74,.15);color:#86efac;border:1px solid rgba(22,163,74,.3)}
+.badge-green{background:rgba(34,197,94,.15);color:#86efac;border:1px solid rgba(34,197,94,.3)}
+.badge-blue{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+.badge-purple{background:rgba(168,85,247,.15);color:#d8b4fe;border:1px solid rgba(168,85,247,.3)}
+.badge-orange{background:rgba(249,115,22,.15);color:#fdba74;border:1px solid rgba(249,115,22,.3)}
+.badge-grey{background:rgba(139,148,158,.15);color:var(--muted);border:1px solid rgba(139,148,158,.3)}
+
+/* ── Progress ── */
+.progress-bar{background:var(--surface2);border-radius:4px;height:8px;overflow:hidden;margin-top:4px}
+.progress-fill{height:100%;border-radius:4px;transition:width .5s}
+.progress-green{background:var(--green)}
+.progress-yellow{background:var(--yellow)}
+.progress-red{background:var(--red)}
+
+/* ── Timeline / Audit ── */
+.timeline{position:relative;padding-left:28px}
+.timeline::before{content:"";position:absolute;left:9px;top:0;bottom:0;width:2px;background:var(--border)}
+.tl-item{position:relative;margin-bottom:14px}
+.tl-dot{position:absolute;left:-23px;top:3px;width:12px;height:12px;border-radius:50%;border:2px solid var(--border);background:var(--surface)}
+.tl-dot.done{background:var(--green);border-color:var(--green)}
+.tl-dot.human{background:var(--purple);border-color:var(--purple)}
+.tl-dot.warn{background:var(--yellow);border-color:var(--yellow)}
+.tl-agent{font-size:10px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.tl-decision{font-size:11px;color:var(--text);margin:2px 0}
+.tl-basis{font-size:10px;color:var(--muted)}
+.tl-time{font-size:9px;color:var(--muted);margin-top:2px}
+.tl-hash{font-size:9px;color:var(--muted);font-family:monospace}
+
+/* ── Graph ── */
+#traceGraph{width:100%;height:480px}
+
+/* ── Agent workflow ── */
+.agent-flow{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-bottom:20px}
+.agent-node{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;text-align:center;min-width:90px;position:relative;cursor:default}
+.agent-node.active-node{border-color:var(--accent);box-shadow:0 0 12px rgba(59,130,246,.25)}
+.agent-node.done-node{border-color:var(--green)}
+.agent-node.human-node{border-color:var(--purple)}
+.agent-label{font-size:9px;color:var(--muted);margin-top:4px;line-height:1.3}
+.agent-icon{font-size:18px}
+.agent-arrow{color:var(--muted);font-size:16px;padding:0 4px}
+
+/* ── Gaps / alerts ── */
+.gap-item{background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:10px 12px;margin-bottom:8px}
+.gap-title{font-size:11px;font-weight:600;color:#fca5a5}
+.gap-action{font-size:10px;color:var(--muted);margin-top:4px}
+
+.approval-box{background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.3);border-radius:8px;padding:14px;margin-bottom:16px}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tab{padding:8px 16px;cursor:pointer;color:var(--muted);font-size:11px;border-bottom:2px solid transparent;transition:.15s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* ── Loading ── */
+#loading{position:fixed;inset:0;background:rgba(13,17,23,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999}
+.loader{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-text{color:var(--muted);font-size:12px}
+.loader-step{color:var(--accent);font-size:11px;margin-top:8px}
+
+.run-btn{background:var(--accent);color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+.run-btn:hover{background:#2563eb}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="loader"></div>
+  <div class="loader-text">Running Autonomous Recall Agents…</div>
+  <div class="loader-step" id="loaderStep">Initializing workflow engine…</div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">AR</div>
+    <div>
+      <h1>Autonomous Product Recall &amp; Traceability Agent</h1>
+      <div class="header-sub">Multi-Agent AI System — BrakeTech Industries LLC</div>
+    </div>
+    <div class="recall-badge" id="recallBadge">● RECALL ACTIVE</div>
+  </div>
+  <div class="status-bar">
+    <div class="status-item"><span class="dot"></span> All Agents Online</div>
+    <div class="status-item" id="recallIdBadge" style="color:var(--text);font-weight:600"></div>
+    <button class="run-btn" onclick="rerunWorkflow()">⟳ Re-run Workflow</button>
+  </div>
+</div>
+
+<!-- Main layout -->
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">Overview</div>
+    <div class="nav-item active" onclick="showPage('overview',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2zm7 0h5v5H9zm-7 7h5v5H2zm7 0h5v5H9z"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item" onclick="showPage('trigger',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm.75 4a.75.75 0 0 0-1.5 0v3.25l2 2a.75.75 0 0 0 1.06-1.06L8.75 7.94V5z"/></svg>
+      Recall Trigger
+    </div>
+    <div class="sidebar-section">Investigation</div>
+    <div class="nav-item" onclick="showPage('trace',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zm1.5 4.5h-3a.5.5 0 0 0 0 1H8v4.25l-1.72 1.72a.5.5 0 0 0 .71.71l2-2A.5.5 0 0 0 10.5 9.75V5a.5.5 0 0 0-.5-.5z"/></svg>
+      Traceability Graph
+    </div>
+    <div class="nav-item" onclick="showPage('impact',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M1 11.5A.5.5 0 0 0 1.5 12h13a.5.5 0 0 0 .354-.854l-6.5-6.5a.5.5 0 0 0-.708 0l-6.5 6.5A.5.5 0 0 0 1 11.5z"/></svg>
+      Impact Analysis
+    </div>
+    <div class="sidebar-section">Execution</div>
+    <div class="nav-item" onclick="showPage('containment',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm9-3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-.25 3.25a.75.75 0 0 0-1.5 0v3a.75.75 0 0 0 1.5 0v-3z"/></svg>
+      Containment
+    </div>
+    <div class="nav-item" onclick="showPage('comms',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2.5A1.5 1.5 0 0 1 1.5 1h13A1.5 1.5 0 0 1 16 2.5v8a1.5 1.5 0 0 1-1.5 1.5H5.06l-2.56 2.56A.5.5 0 0 1 1.5 14H1a1.5 1.5 0 0 1-1-1.415V2.5z"/></svg>
+      Communications
+    </div>
+    <div class="nav-item" onclick="showPage('logistics',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M0 3.5A.5.5 0 0 1 .5 3H9a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5H.5a.5.5 0 0 1-.5-.5v-7zM11 4h2.5a.5.5 0 0 1 .4.2l2 2.667a.5.5 0 0 1 .1.3V10.5a.5.5 0 0 1-.5.5H11V4z"/></svg>
+      Reverse Logistics
+    </div>
+    <div class="sidebar-section">Verification</div>
+    <div class="nav-item" onclick="showPage('verification',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z"/></svg>
+      Verification
+    </div>
+    <div class="nav-item" onclick="showPage('audit',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h4.5v1.5H2V2zm0 3h4.5v1.5H2V5zm0 3h4.5v1.5H2V8zm0 3h4.5V12.5H2V11zm5.5-9H14v1.5H7.5V2zm0 3H14v1.5H7.5V5zm0 3H14v1.5H7.5V8zm0 3H14V12.5H7.5V11z"/></svg>
+      Audit Trail
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main">
+
+    <!-- ══ OVERVIEW PAGE ══ -->
+    <div class="page active" id="page-overview">
+      <div style="margin-bottom:16px">
+        <div style="font-size:18px;font-weight:700;color:var(--text)">Recall Dashboard</div>
+        <div style="font-size:11px;color:var(--muted)" id="recallSubtitle">Loading recall details…</div>
+      </div>
+
+      <!-- Agent Workflow Visualization -->
+      <div class="card">
+        <div class="card-title">🤖 Agentic Workflow Status</div>
+        <div class="agent-flow" id="agentFlow"></div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <!-- Charts row -->
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title">Unit Distribution by Location</div>
+          <div id="chartUnits" style="height:220px"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Financial Exposure Breakdown</div>
+          <div id="chartFinancial" style="height:220px"></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title">Recall Progress by Category</div>
+          <div id="chartProgress" style="height:220px"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Affected Batches Overview</div>
+          <div id="chartBatches" style="height:220px"></div>
+        </div>
+      </div>
+
+      <!-- Human Approval -->
+      <div class="approval-box" id="approvalBox"></div>
+    </div>
+
+    <!-- ══ TRIGGER PAGE ══ -->
+    <div class="page" id="page-trigger">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">🚨 Recall Trigger Analysis</div>
+      <div class="grid2">
+        <div id="triggerLeft"></div>
+        <div id="triggerRight"></div>
+      </div>
+    </div>
+
+    <!-- ══ TRACE PAGE ══ -->
+    <div class="page" id="page-trace">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">🔗 Supply Chain Traceability Graph</div>
+      <div class="card">
+        <div class="card-title">Supplier → Raw Material → Production → Warehouse → Distributor Graph</div>
+        <div id="traceGraph"></div>
+      </div>
+      <div class="grid2">
+        <div id="traceLeft"></div>
+        <div id="traceRight"></div>
+      </div>
+    </div>
+
+    <!-- ══ IMPACT PAGE ══ -->
+    <div class="page" id="page-impact">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">📊 Impact Analysis</div>
+      <div id="impactContent"></div>
+    </div>
+
+    <!-- ══ CONTAINMENT PAGE ══ -->
+    <div class="page" id="page-containment">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">🛑 Containment Actions</div>
+      <div id="containmentContent"></div>
+    </div>
+
+    <!-- ══ COMMUNICATIONS PAGE ══ -->
+    <div class="page" id="page-comms">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">📧 Recall Communications</div>
+      <div id="commsContent"></div>
+    </div>
+
+    <!-- ══ LOGISTICS PAGE ══ -->
+    <div class="page" id="page-logistics">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">🚚 Reverse Logistics</div>
+      <div id="logisticsContent"></div>
+    </div>
+
+    <!-- ══ VERIFICATION PAGE ══ -->
+    <div class="page" id="page-verification">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">✅ Recall Verification</div>
+      <div id="verificationContent"></div>
+    </div>
+
+    <!-- ══ AUDIT PAGE ══ -->
+    <div class="page" id="page-audit">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">📋 Audit Trail</div>
+      <div id="auditContent"></div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<script>
+let R = null; // global results
+
+// ══ NAVIGATION ══
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  if(el) el.classList.add('active');
+  if(name==='trace' && R) renderTraceGraph();
+}
+
+// ══ LOADING ══
+const steps = [
+  'Analyzing quality alerts and incidents…',
+  'Tracing product genealogy…',
+  'Calculating impact scope…',
+  'Building containment plan…',
+  'Generating distributor notifications…',
+  'Planning reverse logistics…',
+  'Running verification sweep…',
+  'Compiling audit trail…',
+];
+let stepIdx = 0;
+const stepEl = document.getElementById('loaderStep');
+const stepTimer = setInterval(() => {
+  if(stepIdx < steps.length){ stepEl.textContent = steps[stepIdx++]; }
+}, 900);
+
+// ══ FETCH DATA ══
+async function loadData() {
+  const res = await fetch('/api/results');
+  R = await res.json();
+  clearInterval(stepTimer);
+  document.getElementById('loading').style.display = 'none';
+  renderAll();
+}
+
+async function rerunWorkflow() {
+  document.getElementById('loading').style.display = 'flex';
+  stepIdx = 0;
+  const stepTimer2 = setInterval(() => {
+    if(stepIdx < steps.length){ stepEl.textContent = steps[stepIdx++]; }
+  }, 900);
+  await fetch('/api/run', {method:'POST'});
+  const res = await fetch('/api/results');
+  R = await res.json();
+  clearInterval(stepTimer2);
+  document.getElementById('loading').style.display = 'none';
+  renderAll();
+}
+
+// ══ MAIN RENDER ══
+function renderAll() {
+  document.getElementById('recallIdBadge').textContent = R.recall_id;
+  document.getElementById('recallSubtitle').textContent =
+    `Recall ID: ${R.recall_id} | Class: ${R.impact.recall_class} | Initiated: ${R.trigger.timestamp.slice(0,16).replace('T',' ')}`;
+
+  renderAgentFlow();
+  renderKPIs();
+  renderCharts();
+  renderApprovalBox();
+  renderTriggerPage();
+  renderTracePage();
+  renderImpactPage();
+  renderContainmentPage();
+  renderCommsPage();
+  renderLogisticsPage();
+  renderVerificationPage();
+  renderAuditPage();
+}
+
+// ══ AGENT FLOW ══
+function renderAgentFlow() {
+  const agents = [
+    {icon:'🚨', label:'Recall\nTrigger', cls:'done-node'},
+    {icon:'🔗', label:'Traceability', cls:'done-node'},
+    {icon:'📊', label:'Impact\nAnalysis', cls:'done-node'},
+    {icon:'👤', label:'Human\nApproval', cls:'human-node'},
+    {icon:'🛑', label:'Containment', cls:'done-node'},
+    {icon:'📧', label:'Comms', cls:'done-node'},
+    {icon:'🚚', label:'Rev.\nLogistics', cls:'done-node'},
+    {icon:'✅', label:'Verification', cls:'done-node'},
+    {icon:'📋', label:'Audit', cls:'active-node'},
+  ];
+  const el = document.getElementById('agentFlow');
+  el.innerHTML = agents.map((a,i) =>
+    `<div class="agent-node ${a.cls}" title="${a.label}">
+       <div class="agent-icon">${a.icon}</div>
+       <div class="agent-label">${a.label.replace('\n','<br>')}</div>
+     </div>` + (i<agents.length-1 ? '<div class="agent-arrow">→</div>' : '')
+  ).join('');
+}
+
+// ══ KPIs ══
+function renderKPIs() {
+  const t = R.trigger, imp = R.impact, ver = R.verification;
+  const pct = ver.scorecard.completion_pct;
+  const kpis = [
+    {label:'Trigger Level', value:t.trigger_level, sub:t.recommended_action, cls:'critical'},
+    {label:'Units In Scope', value:imp.total_units_in_scope.toLocaleString(), sub:`${imp.affected_batch_count} batches`, cls:'high'},
+    {label:'Financial Exposure', value:`$${(imp.financial_exposure_usd.total_estimated/1e6).toFixed(2)}M`, sub:'Total estimated', cls:'high'},
+    {label:'Distributors Affected', value:imp.affected_distributor_count, sub:'Across all regions', cls:'medium'},
+    {label:'Recall Completion', value:`${pct}%`, sub:`${ver.scorecard.verified} of ${ver.scorecard.total_checks} verified`, cls: pct>=80?'green':'medium'},
+    {label:'Open Gaps', value:ver.gaps.length, sub:ver.needs_replan?'Re-plan required':'All actions tracked', cls:ver.gaps.length>0?'high':'green'},
+    {label:'Severity Score', value:`${t.severity_score}/100`, sub:`${t.open_incidents} incidents`, cls:'critical'},
+    {label:'Recovery Est.', value:`${imp.estimated_overall_recovery_pct}%`, sub:'Weighted by location', cls:'blue'},
+  ];
+  document.getElementById('kpiGrid').innerHTML = kpis.map(k=>
+    `<div class="kpi ${k.cls}">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value}</div>
+      <div class="kpi-sub">${k.sub}</div>
+    </div>`
+  ).join('');
+}
+
+// ══ CHARTS ══
+function renderCharts() {
+  const imp = R.impact;
+  const qty = imp.quantity_breakdown;
+
+  // Units pie
+  const c1 = echarts.init(document.getElementById('chartUnits'));
+  c1.setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'item',formatter:'{b}: {c} units ({d}%)'},
+    legend:{bottom:0,textStyle:{color:'#8b949e',fontSize:10}},
+    series:[{type:'pie',radius:['40%','70%'],center:['50%','45%'],
+      label:{color:'#e6edf3',fontSize:10},
+      data:[
+        {value:qty.warehouse_stock,name:'Warehouse Stock',itemStyle:{color:'#3b82f6'}},
+        {value:qty.in_transit,name:'In Transit',itemStyle:{color:'#f59e0b'}},
+        {value:qty.delivered_to_distributors,name:'At Distributors',itemStyle:{color:'#ef4444'}},
+      ]
+    }]
+  });
+
+  // Financial bar
+  const fin = imp.financial_exposure_usd;
+  const c2 = echarts.init(document.getElementById('chartFinancial'));
+  c2.setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+    grid:{left:10,right:10,top:10,bottom:40,containLabel:true},
+    xAxis:{type:'category',axisLabel:{color:'#8b949e',fontSize:9,rotate:15},
+      data:['Replacement','Labor','Logistics','Fines','Total']},
+    yAxis:{type:'value',axisLabel:{color:'#8b949e',fontSize:9,formatter:v=>'$'+(v/1000).toFixed(0)+'k'}},
+    series:[{type:'bar',barWidth:'50%',
+      data:[
+        {value:fin.product_replacement,itemStyle:{color:'#ef4444'}},
+        {value:fin.labor_installation,itemStyle:{color:'#f97316'}},
+        {value:fin.return_logistics,itemStyle:{color:'#f59e0b'}},
+        {value:fin.regulatory_fines,itemStyle:{color:'#a855f7'}},
+        {value:fin.total_estimated,itemStyle:{color:'#3b82f6'}},
+      ]
+    }]
+  });
+
+  // Verification progress radar
+  const sc = R.verification.scorecard;
+  const c3 = echarts.init(document.getElementById('chartProgress'));
+  const cats = ['Verified','Partial','Pending','Escalating'];
+  const vals = [sc.verified,sc.partial,sc.pending,sc.escalating];
+  c3.setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis'},
+    grid:{left:20,right:20,top:20,bottom:30,containLabel:true},
+    xAxis:{type:'category',data:cats,axisLabel:{color:'#8b949e',fontSize:10}},
+    yAxis:{type:'value',axisLabel:{color:'#8b949e',fontSize:9}},
+    series:[{type:'bar',barWidth:'40%',
+      data:vals.map((v,i)=>({value:v,itemStyle:{color:['#22c55e','#f59e0b','#ef4444','#a855f7'][i]}}))
+    }]
+  });
+
+  // Batches bar
+  const batches = R.trace.affected_batch_detail;
+  const bKeys = Object.keys(batches);
+  const c4 = echarts.init(document.getElementById('chartBatches'));
+  c4.setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis'},
+    grid:{left:10,right:10,top:10,bottom:40,containLabel:true},
+    xAxis:{type:'category',data:bKeys,axisLabel:{color:'#8b949e',fontSize:9}},
+    yAxis:{type:'value',axisLabel:{color:'#8b949e',fontSize:9}},
+    series:[{
+      type:'bar',barWidth:'45%',
+      data:bKeys.map(k=>({value:batches[k].qty_units,itemStyle:{color:'#3b82f6'}})),
+      label:{show:true,position:'top',color:'#8b949e',fontSize:9,formatter:p=>p.value.toLocaleString()}
+    }]
+  });
+}
+
+// ══ APPROVAL BOX ══
+function renderApprovalBox() {
+  const ha = R.human_approval;
+  document.getElementById('approvalBox').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-size:18px">👤</span>
+      <span style="font-size:12px;font-weight:700;color:#d8b4fe">Human Approval — Recall Execution Authorized</span>
+      <span class="badge-status badge-purple">APPROVED</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted)"><strong style="color:var(--text)">${ha.approver}</strong> · ${ha.approver_title}</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px">${ha.rationale}</div>
+    <div style="font-size:9px;color:var(--muted);margin-top:6px;font-family:monospace">Signature ref: ${ha.signature_ref} | ${ha.timestamp.slice(0,16).replace('T',' ')}</div>`;
+}
+
+// ══ TRIGGER PAGE ══
+function renderTriggerPage() {
+  const t = R.trigger;
+  const inc = R.data_store ? R.data_store.customer_incidents : {};
+
+  document.getElementById('triggerLeft').innerHTML = `
+    <div class="card">
+      <div class="card-title">Trigger Summary</div>
+      <table>
+        <tr><td style="color:var(--muted)">Recall ID</td><td>${R.recall_id}</td></tr>
+        <tr><td style="color:var(--muted)">Trigger Level</td><td><span class="badge-status badge-critical">${t.trigger_level}</span></td></tr>
+        <tr><td style="color:var(--muted)">Action</td><td>${t.recommended_action}</td></tr>
+        <tr><td style="color:var(--muted)">Severity Score</td><td>${t.severity_score}/100</td></tr>
+        <tr><td style="color:var(--muted)">Open Incidents</td><td>${t.open_incidents}</td></tr>
+        <tr><td style="color:var(--muted)">Critical</td><td>${t.critical_incidents}</td></tr>
+        <tr><td style="color:var(--muted)">Failed QA Tests</td><td>${t.failed_quality_tests}</td></tr>
+        <tr><td style="color:var(--muted)">Root Cause</td><td style="color:#fca5a5">${t.suspect_root_cause}</td></tr>
+        <tr><td style="color:var(--muted)">Primary Batch</td><td>${t.primary_suspect_batch}</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Suspect Raw Lots</div>
+      ${t.suspect_raw_lots.map(l=>`<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:11px"><span style="color:#fca5a5;font-weight:600">${l}</span></div>`).join('')}
+    </div>`;
+
+  document.getElementById('triggerRight').innerHTML = `
+    <div class="card">
+      <div class="card-title">Key Findings <span class="badge">${t.findings.length}</span></div>
+      ${t.findings.map(f=>{
+        const sev = f.includes('[CRITICAL]')?'critical':f.includes('[HIGH]')?'high':f.includes('[QA')? 'medium':'blue';
+        return `<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted)">${f}</div>`;
+      }).join('')}
+    </div>
+    <div class="card">
+      <div class="card-title">Regulatory Obligation</div>
+      <div style="font-size:11px;color:var(--text);margin-bottom:6px">${t.regulatory_obligation}</div>
+      <div style="font-size:10px;color:var(--yellow)">⚠ ${t.mandatory_notification_deadline}</div>
+    </div>`;
+}
+
+// ══ TRACE GRAPH ══
+let graphInited = false;
+function renderTraceGraph() {
+  if(graphInited) return;
+  graphInited = true;
+  fetch('/api/graph').then(r=>r.json()).then(graph => {
+    const chart = echarts.init(document.getElementById('traceGraph'));
+    const typeColors = {
+      supplier:'#dc2626', raw_lot:'#f97316', batch:'#f59e0b',
+      warehouse:'#3b82f6', distributor:'#22c55e'
+    };
+    const nodes = graph.nodes.map(n => ({
+      id: n.id,
+      name: n.label,
+      symbolSize: n.type==='supplier'?48:n.type==='batch'?38:n.type==='distributor'?28:32,
+      itemStyle: {color: typeColors[n.type]||'#8b949e'},
+      label: {show:true, fontSize:9, color:'#e6edf3', formatter:p=>p.name.split('\n')[0]},
+      category: n.type,
+    }));
+    const edges = graph.edges.map(e => ({
+      source: e.from, target: e.to,
+      label: {show:false},
+      lineStyle: {color:'#30363d', curveness:0.1},
+    }));
+    chart.setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'item',formatter:p=>p.data.name||p.name},
+      legend:{data:['supplier','raw_lot','batch','warehouse','distributor'],
+        textStyle:{color:'#8b949e',fontSize:9}, bottom:0},
+      series:[{
+        type:'graph', layout:'force',
+        force:{repulsion:200,edgeLength:[60,180],gravity:0.08,layoutAnimation:true},
+        nodes, edges,
+        roam:true, draggable:true,
+        emphasis:{focus:'adjacency'},
+        categories:[
+          {name:'supplier'},{name:'raw_lot'},{name:'batch'},
+          {name:'warehouse'},{name:'distributor'}
+        ],
+        lineStyle:{opacity:.6,width:1.5},
+      }]
+    });
+  });
+}
+
+// ══ TRACE PAGE ══
+function renderTracePage() {
+  const tr = R.trace;
+  const qs = tr.quantity_summary;
+  document.getElementById('traceLeft').innerHTML = `
+    <div class="card">
+      <div class="card-title">Quantity Summary</div>
+      <table>
+        <tr><td style="color:var(--muted)">Total Produced</td><td><strong>${qs.total_units_produced.toLocaleString()}</strong></td></tr>
+        <tr><td style="color:var(--muted)">In Warehouse</td><td>${qs.total_units_in_warehouse.toLocaleString()}</td></tr>
+        <tr><td style="color:var(--muted)">Total Shipped</td><td>${qs.total_units_shipped.toLocaleString()}</td></tr>
+        <tr><td style="color:var(--muted)">In Transit</td><td><span style="color:var(--yellow)">${qs.in_transit.toLocaleString()}</span></td></tr>
+        <tr><td style="color:var(--muted)">Delivered</td><td>${qs.delivered_to_distributors.toLocaleString()}</td></tr>
+        <tr><td style="color:var(--muted)">Unaccounted</td><td><span style="color:${qs.unaccounted>0?'var(--red)':'var(--green)'}">${qs.unaccounted.toLocaleString()}</span></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Affected Batches</div>
+      <table>
+        <tr><th>Batch</th><th>Product</th><th>Units</th><th>Status</th></tr>
+        ${tr.affected_batches.map(b=>{
+          const bd = tr.affected_batch_detail[b];
+          return `<tr>
+            <td style="color:var(--accent)">${b}</td>
+            <td>${bd.product_code}</td>
+            <td>${bd.qty_units.toLocaleString()}</td>
+            <td><span class="badge-status badge-critical">AFFECTED</span></td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>`;
+
+  document.getElementById('traceRight').innerHTML = `
+    <div class="card">
+      <div class="card-title">Affected Distributors <span class="badge">${tr.affected_distributors.length}</span></div>
+      <table>
+        <tr><th>Distributor</th><th>Name</th><th>Units</th></tr>
+        ${tr.affected_distributors.map(d=>{
+          const dd = tr.affected_distributor_detail[d];
+          return `<tr>
+            <td style="color:var(--accent);font-size:10px">${d}</td>
+            <td style="font-size:10px">${dd.name}</td>
+            <td>${dd.total_units}</td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>`;
+}
+
+// ══ IMPACT PAGE ══
+function renderImpactPage() {
+  const imp = R.impact;
+  const fin = imp.financial_exposure_usd;
+  const dist = imp.distributor_risk_scores;
+
+  document.getElementById('impactContent').innerHTML = `
+    <div class="grid3">
+      <div class="card">
+        <div class="card-title">Financial Exposure</div>
+        ${Object.entries(fin).map(([k,v])=>`
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px">
+            <span style="color:var(--muted)">${k.replace(/_/g,' ')}</span>
+            <span style="color:${k==='total_estimated'?'var(--red)':'var(--text)'}">$${Number(v).toLocaleString()}</span>
+          </div>`).join('')}
+      </div>
+      <div class="card">
+        <div class="card-title">Recovery Analysis</div>
+        ${Object.entries(imp.recovery_analysis).map(([k,v])=>`
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px">
+              <span style="color:var(--muted)">${k.replace(/_/g,' ')}</span>
+              <span>${v.units.toLocaleString()} units · ${v.recovery_pct}%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill ${v.recovery_pct>=90?'progress-green':v.recovery_pct>=70?'progress-yellow':'progress-red'}" style="width:${v.recovery_pct}%"></div></div>
+            <div style="font-size:9px;color:var(--muted);margin-top:2px">Effort: ${v.effort}</div>
+          </div>`).join('')}
+        <div style="padding-top:8px;border-top:1px solid var(--border);font-size:11px">
+          <strong>Overall Recovery: ${imp.estimated_overall_recovery_pct}%</strong>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Customer Impact</div>
+        <table>
+          <tr><td style="color:var(--muted)">Complaint Units</td><td>${imp.customer_impact.confirmed_complaint_units}</td></tr>
+          <tr><td style="color:var(--muted)">Complaint Count</td><td>${imp.customer_impact.complaint_count}</td></tr>
+          <tr><td style="color:var(--muted)">Vehicles Affected</td><td><span style="color:var(--red)">${imp.customer_impact.vehicles_potentially_affected.toLocaleString()}</span></td></tr>
+          <tr><td style="color:var(--muted)">Recall Class</td><td><span class="badge-status badge-critical">${imp.recall_class}</span></td></tr>
+          <tr><td style="color:var(--muted)">Safety Risk</td><td><span class="badge-status badge-critical">${imp.safety_risk_level}</span></td></tr>
+        </table>
+        <div style="margin-top:12px;font-size:10px;color:var(--muted)"><strong style="color:var(--text)">Regulatory Obligations</strong></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">${imp.regulatory_obligations.agencies.join(' · ')}</div>
+        <div style="font-size:10px;color:var(--yellow);margin-top:4px">⚠ ${imp.regulatory_obligations.deadline}</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Distributor Risk Scores</div>
+      <table>
+        <tr><th>ID</th><th>Name</th><th>Units at Risk</th><th>Risk Score</th><th>Priority</th><th>In Transit</th></tr>
+        ${Object.entries(dist).map(([id,d])=>`<tr>
+          <td style="color:var(--accent)">${id}</td>
+          <td>${d.name}</td>
+          <td>${d.units_at_risk}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="width:60px">
+                <div class="progress-bar"><div class="progress-fill ${d.risk_score>=60?'progress-red':d.risk_score>=30?'progress-yellow':'progress-green'}" style="width:${d.risk_score}%"></div></div>
+              </div>
+              <span style="font-size:10px">${d.risk_score}</span>
+            </div>
+          </td>
+          <td><span class="badge-status badge-${d.priority.toLowerCase()}">${d.priority}</span></td>
+          <td>${d.in_transit?'<span style="color:var(--yellow)">Yes</span>':'No'}</td>
+        </tr>`).join('')}
+      </table>
+    </div>`;
+}
+
+// ══ CONTAINMENT PAGE ══
+function renderContainmentPage() {
+  const con = R.containment;
+  const summary = con.summary;
+  const actions = con.containment_actions;
+
+  const typeMap = {
+    INVENTORY_HOLD:'🔒 Inventory Hold',
+    SHIPMENT_SUSPENSION:'⏸ Shipment Suspension',
+    SHIPMENT_BLOCK:'🚫 Shipment Block',
+    RAW_MATERIAL_QUARANTINE:'☣ Raw Material Quarantine',
+    DISTRIBUTOR_HOLD_REQUEST:'📨 Distributor Hold Request',
+  };
+  const statusBadge = s => {
+    if(s==='EXECUTED') return '<span class="badge-status badge-green">EXECUTED</span>';
+    if(s==='PENDING_APPROVAL') return '<span class="badge-status badge-purple">PENDING APPROVAL</span>';
+    if(s==='PENDING') return '<span class="badge-status badge-medium">PENDING</span>';
+    return `<span class="badge-status badge-grey">${s}</span>`;
+  };
+
+  document.getElementById('containmentContent').innerHTML = `
+    <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr)">
+      <div class="kpi blue"><div class="kpi-label">Total Actions</div><div class="kpi-value">${summary.total_actions}</div></div>
+      <div class="kpi green"><div class="kpi-label">Executed</div><div class="kpi-value">${summary.executed}</div></div>
+      <div class="kpi medium"><div class="kpi-label">Awaiting Approval</div><div class="kpi-value">${summary.pending_approval}</div></div>
+      <div class="kpi high"><div class="kpi-label">WH Holds</div><div class="kpi-value">${summary.warehouse_holds}</div></div>
+      <div class="kpi high"><div class="kpi-label">Transit Holds</div><div class="kpi-value">${summary.transit_holds}</div></div>
+      <div class="kpi critical"><div class="kpi-label">Units Containable</div><div class="kpi-value">${con.units_immediately_containable.toLocaleString()}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">All Containment Actions</div>
+      <table>
+        <tr><th>Action ID</th><th>Type</th><th>Target</th><th>Units/Details</th><th>Status</th></tr>
+        ${actions.map(a=>`<tr>
+          <td style="font-family:monospace;font-size:9px;color:var(--accent)">${a.action_id}</td>
+          <td style="font-size:10px">${typeMap[a.type]||a.type}</td>
+          <td style="font-size:10px;color:var(--muted)">${a.warehouse_name||a.shipment_id||a.lot_id||a.distributor_name||'—'}</td>
+          <td style="font-size:10px">${a.units_to_hold!=null?a.units_to_hold+' units':a.qty!=null?a.qty+' units':a.qty_kg!=null?a.qty_kg+' kg':a.units_at_risk!=null?a.units_at_risk+' units':'—'}</td>
+          <td>${statusBadge(a.status)}</td>
+        </tr>`).join('')}
+      </table>
+    </div>`;
+}
+
+// ══ COMMS PAGE ══
+function renderCommsPage() {
+  const comm = R.communications;
+  const comms = comm.communications;
+  const sum = comm.summary;
+
+  const statusBadge = s => {
+    const map = {SENT:'green',QUEUED:'blue',DRAFT:'grey',PENDING:'medium'};
+    return `<span class="badge-status badge-${map[s]||'grey'}">${s}</span>`;
+  };
+
+  const tabs = ['All','DISTRIBUTOR_RECALL_NOTICE','REGULATORY_NOTIFICATION','INTERNAL_ALERT'];
+  let html = `
+    <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr)">
+      <div class="kpi blue"><div class="kpi-label">Total</div><div class="kpi-value">${sum.total_communications}</div></div>
+      <div class="kpi green"><div class="kpi-label">Sent</div><div class="kpi-value">${sum.sent}</div></div>
+      <div class="kpi medium"><div class="kpi-label">Queued</div><div class="kpi-value">${sum.queued}</div></div>
+      <div class="kpi high"><div class="kpi-label">Draft</div><div class="kpi-value">${sum.draft}</div></div>
+      <div class="kpi blue"><div class="kpi-label">Distributors</div><div class="kpi-value">${sum.distributor_notices}</div></div>
+      <div class="kpi purple"><div class="kpi-label">Regulatory</div><div class="kpi-value">${sum.regulatory_filings}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Communications Log</div>
+      <table>
+        <tr><th>ID</th><th>Type</th><th>Recipient</th><th>Priority</th><th>Channel</th><th>Status</th><th>Sent At</th></tr>
+        ${comms.map(c=>`<tr>
+          <td style="font-family:monospace;font-size:9px;color:var(--accent)">${c.comm_id}</td>
+          <td style="font-size:9px">${c.type.replace(/_/g,' ')}</td>
+          <td style="font-size:10px">${c.recipient_name}</td>
+          <td><span class="badge-status badge-${(c.priority||'').toLowerCase()}">${c.priority||'—'}</span></td>
+          <td style="font-size:9px;color:var(--muted)">${c.channel}</td>
+          <td>${statusBadge(c.status)}</td>
+          <td style="font-size:9px;color:var(--muted)">${c.sent_at?c.sent_at.slice(0,16).replace('T',' '):'—'}</td>
+        </tr>`).join('')}
+      </table>
+    </div>`;
+
+  document.getElementById('commsContent').innerHTML = html;
+}
+
+// ══ LOGISTICS PAGE ══
+function renderLogisticsPage() {
+  const log = R.logistics;
+  const sum = log.summary;
+  const rmas = log.return_orders;
+  const transfers = log.warehouse_transfers;
+
+  const disp = log.disposition_plan;
+  document.getElementById('logisticsContent').innerHTML = `
+    <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr)">
+      <div class="kpi blue"><div class="kpi-label">RMAs Issued</div><div class="kpi-value">${sum.total_rma_issued}</div></div>
+      <div class="kpi high"><div class="kpi-label">Units in Reverse Flow</div><div class="kpi-value">${sum.total_units_in_reverse_flow.toLocaleString()}</div></div>
+      <div class="kpi medium"><div class="kpi-label">WH Transfers</div><div class="kpi-value">${sum.total_warehouse_transfers}</div></div>
+      <div class="kpi green"><div class="kpi-label">Est. Completion</div><div class="kpi-value">${log.estimated_completion_days}d</div></div>
+      <div class="kpi purple"><div class="kpi-label">Destroy</div><div class="kpi-value">${disp.confirmed_defective_destroy.toLocaleString()}</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Return Material Authorizations <span class="badge">${rmas.length}</span></div>
+        <table>
+          <tr><th>RMA</th><th>Source</th><th>Units</th><th>Hub</th><th>Priority</th><th>Expected</th><th>Status</th></tr>
+          ${rmas.map(r=>`<tr>
+            <td style="font-family:monospace;font-size:9px;color:var(--accent)">${r.rma_id.slice(-12)}</td>
+            <td style="font-size:10px">${r.source_name}</td>
+            <td>${r.units_to_return}</td>
+            <td style="font-size:9px;color:var(--muted)">${r.hub_name.split(' ').slice(0,2).join(' ')}</td>
+            <td><span class="badge-status badge-${r.priority.toLowerCase()}">${r.priority}</span></td>
+            <td style="font-size:9px">${r.expected_return_date}</td>
+            <td><span class="badge-status badge-blue">RMA ISSUED</span></td>
+          </tr>`).join('')}
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Warehouse Quarantine Transfers</div>
+        <table>
+          <tr><th>Transfer</th><th>Warehouse</th><th>Batch</th><th>Units</th><th>Status</th></tr>
+          ${transfers.map(t=>`<tr>
+            <td style="font-family:monospace;font-size:9px;color:var(--accent)">${t.transfer_id.slice(-14)}</td>
+            <td style="font-size:10px">${t.source_name}</td>
+            <td style="font-size:10px">${t.batch}</td>
+            <td>${t.units}</td>
+            <td><span class="badge-status badge-medium">SCHEDULED</span></td>
+          </tr>`).join('')}
+        </table>
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="card-title">Disposition Plan</div>
+          ${Object.entries(disp).map(([k,v])=>`
+            <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px">
+              <span style="color:var(--muted)">${k.replace(/_/g,' ')}</span>
+              <span>${Number(v).toLocaleString()} units</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ══ VERIFICATION PAGE ══
+function renderVerificationPage() {
+  const ver = R.verification;
+  const sc = ver.scorecard;
+  const checks = ver.verification_checks;
+  const gaps = ver.gaps;
+
+  const statusBadge = s => {
+    const map = {VERIFIED:'green',ACKNOWLEDGED:'green',FILED:'green',PARTIAL:'medium',NOTIFIED:'blue',PENDING:'high',NOT_NOTIFIED:'critical',ESCALATING:'critical'};
+    return `<span class="badge-status badge-${map[s]||'grey'}">${s}</span>`;
+  };
+
+  document.getElementById('verificationContent').innerHTML = `
+    <div class="kpi-grid" style="grid-template-columns:repeat(6,1fr)">
+      <div class="kpi ${sc.completion_pct>=80?'green':'medium'}"><div class="kpi-label">Completion</div><div class="kpi-value">${sc.completion_pct}%</div></div>
+      <div class="kpi green"><div class="kpi-label">Verified</div><div class="kpi-value">${sc.verified}</div></div>
+      <div class="kpi medium"><div class="kpi-label">Partial</div><div class="kpi-value">${sc.partial}</div></div>
+      <div class="kpi high"><div class="kpi-label">Pending</div><div class="kpi-value">${sc.pending}</div></div>
+      <div class="kpi critical"><div class="kpi-label">Escalating</div><div class="kpi-value">${sc.escalating}</div></div>
+      <div class="kpi ${ver.recall_complete?'green':'high'}"><div class="kpi-label">Recall Complete</div><div class="kpi-value">${ver.recall_complete?'YES':'NO'}</div></div>
+    </div>
+
+    ${gaps.length>0?`<div class="card"><div class="card-title" style="color:var(--red)">⚠ Open Gaps — Re-plan Required</div>
+      ${gaps.map(g=>`<div class="gap-item">
+        <div class="gap-title">${g.gap_id} · ${g.description}</div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <span class="badge-status badge-${g.severity.toLowerCase()}">${g.severity}</span>
+          <span class="badge-status badge-grey">${g.category}</span>
+        </div>
+        <div class="gap-action">▶ ${g.recommended_action}</div>
+      </div>`).join('')}
+    </div>`:''}
+
+    <div class="card">
+      <div class="card-title">All Verification Checks <span class="badge">${checks.length}</span></div>
+      <table>
+        <tr><th>Check ID</th><th>Category</th><th>Description</th><th>Units Confirmed</th><th>Status</th><th>Notes</th></tr>
+        ${checks.map(c=>`<tr>
+          <td style="font-family:monospace;font-size:9px;color:var(--accent)">${c.check_id}</td>
+          <td style="font-size:9px">${c.category.replace(/_/g,' ')}</td>
+          <td style="font-size:10px">${c.description}</td>
+          <td style="font-size:10px">${c.units_confirmed!=null?c.units_confirmed:'—'}</td>
+          <td>${statusBadge(c.status)}</td>
+          <td style="font-size:9px;color:var(--muted)">${c.notes}</td>
+        </tr>`).join('')}
+      </table>
+    </div>`;
+}
+
+// ══ AUDIT PAGE ══
+function renderAuditPage() {
+  const aud = R.audit;
+  const chain = aud.decision_chain;
+
+  const statusColor = s => ({
+    'IN_PROGRESS':'var(--yellow)', 'SUBSTANTIALLY_COMPLETE':'var(--green)',
+    'CLOSED':'var(--green)', 'OPEN':'var(--red)'
+  }[s]||'var(--muted)');
+
+  document.getElementById('auditContent').innerHTML = `
+    <div class="grid2">
+      <div>
+        <div class="card">
+          <div class="card-title">Recall Summary</div>
+          <table>
+            <tr><td style="color:var(--muted)">Recall ID</td><td><strong>${aud.recall_id}</strong></td></tr>
+            <tr><td style="color:var(--muted)">Status</td><td><span style="color:${statusColor(aud.recall_status)};font-weight:600">${aud.recall_status}</span></td></tr>
+            <tr><td style="color:var(--muted)">Class</td><td>${aud.recall_class}</td></tr>
+            <tr><td style="color:var(--muted)">Units In Scope</td><td>${aud.total_units_in_scope.toLocaleString()}</td></tr>
+            <tr><td style="color:var(--muted)">Financial Exposure</td><td>$${aud.financial_exposure.toLocaleString()}</td></tr>
+            <tr><td style="color:var(--muted)">Completion</td><td>${aud.completion_pct}%</td></tr>
+            <tr><td style="color:var(--muted)">Initiated</td><td>${aud.recall_initiated.slice(0,16).replace('T',' ')}</td></tr>
+            <tr><td style="color:var(--muted)">Audit Hash</td><td style="font-family:monospace;font-size:9px">${aud.audit_integrity.audit_hash}</td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-title">Evidence References</div>
+          <table>
+            <tr><th>Reference</th><th>Type</th><th>Description</th></tr>
+            ${aud.evidence_references.map(e=>`<tr>
+              <td style="font-family:monospace;font-size:9px;color:var(--accent)">${e.ref}</td>
+              <td style="font-size:9px">${e.type}</td>
+              <td style="font-size:10px;color:var(--muted)">${e.description}</td>
+            </tr>`).join('')}
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Decision Chain <span class="badge">${chain.length} steps</span></div>
+        <div class="timeline">
+          ${chain.map(d=>`<div class="tl-item">
+            <div class="tl-dot ${d.agent.includes('HUMAN')?'human':'done'}"></div>
+            <div class="tl-agent">${d.agent}</div>
+            <div class="tl-decision">${d.decision}</div>
+            <div class="tl-basis">${d.basis}</div>
+            <div style="display:flex;gap:8px;margin-top:3px;flex-wrap:wrap">
+              <div class="tl-time">${d.timestamp.slice(0,16).replace('T',' ')}</div>
+              <div class="tl-hash">#{${d.hash}}</div>
+              ${!d.automated?`<span class="badge-status badge-purple">Human</span>`:''}
+              ${d.approver?`<span style="font-size:9px;color:#d8b4fe">✍ ${d.approver}</span>`:''}
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Full Agent Activity Log <span class="badge">${aud.agent_activity_log.length} entries</span></div>
+      <table>
+        <tr><th>#</th><th>Timestamp</th><th>Agent</th><th>Message</th></tr>
+        ${aud.agent_activity_log.map(e=>`<tr>
+          <td style="color:var(--muted);font-size:9px">${e.seq}</td>
+          <td style="font-family:monospace;font-size:9px;color:var(--muted)">${e.timestamp.slice(0,19).replace('T',' ')}</td>
+          <td style="font-size:10px;color:var(--accent)">${e.agent}</td>
+          <td style="font-size:10px">${e.message}</td>
+        </tr>`).join('')}
+      </table>
+    </div>`;
+}
+
+// ══ Init ══
+window.addEventListener('DOMContentLoaded', loadData);
+</script>
+</body>
+</html>
